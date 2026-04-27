@@ -10,6 +10,41 @@ function isBlueskyCommand(s: string): s is BlueskyCommandName {
   return (BLUESKY_CMDS as readonly string[]).includes(s);
 }
 
+type ExecutionMode = "dry" | "live";
+
+/**
+ * @returns "dry" = pass `--dry-run` (or stay in preview). "live" = no `--dry-run`.
+ */
+async function chooseBlueskyExecutionMode(opts: {
+  label: string;
+  /** Pre-selected list item (e.g. prefer live for auto-follow). */
+  defaultMode: ExecutionMode;
+  liveConfirmMessage?: string;
+}): Promise<ExecutionMode> {
+  const mode = await select<ExecutionMode>({
+    message: `${opts.label} — how should this run?`,
+    choices: [
+      { name: "Dry-run — preview / no real changes to follows", value: "dry" },
+      { name: "Live — apply for real (unfollows / follows as implemented)", value: "live" }
+    ],
+    default: opts.defaultMode
+  });
+  if (mode === "dry") {
+    return "dry";
+  }
+  const message =
+    opts.liveConfirmMessage ??
+    "This performs real follow/unfollow actions (not a preview). Continue?";
+  const ok = await confirm({ message, default: false });
+  if (!ok) {
+    console.log(
+      chalk.yellow("Using dry-run instead. Re-run the menu and choose live when you are ready.")
+    );
+    return "dry";
+  }
+  return "live";
+}
+
 /**
  * After picking api → bluesky → <command>, user chooses which flags to pass.
  * Returns argv suffix only (e.g. `["--all", "--dry-run"]`).
@@ -149,43 +184,72 @@ export async function promptBlueskyArgSuffix(command: string): Promise<string[]>
     }
 
     case "unfollow": {
-      const preset = await select<
+      const scenario = await select<
         | "wizard"
         | "interactive"
-        | "exampleDry"
-        | "allExampleDry"
-        | "nuclearDry"
-        | "oneWayDry"
-        | "throttleDry"
+        | "example"
+        | "allExample"
+        | "nuclear"
+        | "oneWay"
+        | "throttle"
       >({
         message: "Unfollow (see README for the full flag list)",
         choices: [
           { name: "Full guided wizard (default — set criteria in prompts)", value: "wizard" },
           { name: "Force wizard (pass --interactive)", value: "interactive" },
-          { name: "Example policy, dry-run", value: "exampleDry" },
-          { name: "All follows: example policy, dry-run", value: "allExampleDry" },
-          { name: "Nuclear: unfollow everyone, dry-run", value: "nuclearDry" },
-          { name: "One-way: who do not follow back, dry-run", value: "oneWayDry" },
-          { name: "Throttled + example policy, dry-run", value: "throttleDry" }
+          { name: "Example policy (rule-based, non-wizard)", value: "example" },
+          { name: "All follows: example policy (scan all follows)", value: "allExample" },
+          { name: "Nuclear: unfollow everyone in scan (dangerous)", value: "nuclear" },
+          { name: "One-way: who do not follow you back", value: "oneWay" },
+          { name: "Throttled + example policy (rate-limit friendly)", value: "throttle" }
         ],
         default: "wizard"
       });
-      const map: Record<typeof preset, string[]> = {
-        wizard: [],
-        interactive: ["--interactive"],
-        exampleDry: ["--example-policy", "--dry-run"],
-        allExampleDry: ["--all", "--example-policy", "--dry-run"],
-        nuclearDry: ["--all", "--unfollow-everyone", "--dry-run"],
-        oneWayDry: ["--all", "--unfollow-who-dont-follow-back", "--dry-run"],
-        throttleDry: [
-          "--all",
-          "--example-policy",
-          "--dry-run",
-          "--throttle-ms",
-          "50"
-        ]
-      };
-      return map[preset];
+      if (scenario === "wizard") {
+        return [];
+      }
+      if (scenario === "interactive") {
+        return ["--interactive"];
+      }
+
+      const execution = await chooseBlueskyExecutionMode({
+        label: "Unfollow",
+        defaultMode: "dry",
+        liveConfirmMessage:
+          scenario === "nuclear"
+            ? "Nuclear: this will attempt to unfollow every account in the scan (after excludes). This is hard to undo. Continue?"
+            : "This will unfollow accounts for real according to the flags you chose. Continue?"
+      });
+
+      let flags: string[];
+      switch (scenario) {
+        case "example":
+          flags = ["--example-policy"];
+          break;
+        case "allExample":
+          flags = ["--all", "--example-policy"];
+          break;
+        case "nuclear":
+          flags = ["--all", "--unfollow-everyone"];
+          break;
+        case "oneWay":
+          flags = ["--all", "--unfollow-who-dont-follow-back"];
+          break;
+        case "throttle":
+          flags = ["--all", "--example-policy", "--throttle-ms", "50"];
+          break;
+        default: {
+          const _ex: never = scenario;
+          return _ex;
+        }
+      }
+      if (execution === "dry") {
+        return [...flags, "--dry-run"];
+      }
+      if (scenario === "nuclear") {
+        return [...flags, "--confirm-unfollow-everyone"];
+      }
+      return flags;
     }
 
     case "auto-post": {
@@ -211,17 +275,14 @@ export async function promptBlueskyArgSuffix(command: string): Promise<string[]>
     }
 
     case "auto-follow": {
-      const mode = await select<"dry" | "real">({
-        message: "Auto-follow (requires --actor)",
-        choices: [
-          { name: "Real run: set --actor and --limit (no --dry-run)", value: "real" },
-          { name: "Dry-run: set --actor, --limit, and --dry-run (recommended first)", value: "dry" }
-        ],
-        default: "dry"
-      });
       const actor = await input({ message: "Handle or DID (--actor)", required: true });
       const limit = await input({ message: "Limit", default: "20" });
-      if (mode === "dry") {
+      const execution = await chooseBlueskyExecutionMode({
+        label: "Auto-follow",
+        defaultMode: "live",
+        liveConfirmMessage: "This will follow accounts for real (subject to the command’s rules). Continue?"
+      });
+      if (execution === "dry") {
         return ["--actor", actor, "--limit", limit, "--dry-run"];
       }
       return ["--actor", actor, "--limit", limit];

@@ -88,7 +88,7 @@ Examples:
 cct
 ```
 
-This walks the namespace, service, and command menus. If you pick **api** → **bluesky** → a command, a **second menu** offers common flag presets for that tool (or “defaults / prompts” where there are no flags), so the same `cct api bluesky <cmd> …` run receives full `rawArgs` as if you had typed the command. Run `cct` with the usual CLI form when you need flags not shown in a preset.
+This walks the namespace, service, and command menus. If you pick **api** → **bluesky** → a command, a **second menu** offers common flag presets for that tool (or “defaults / prompts” where there are no flags), so the same `cct api bluesky <cmd> …` run receives full `rawArgs` as if you had typed the command. For **unfollow** presets and **auto-follow**, another step asks **dry-run vs live** (with a confirmation on live); nuclear live from the menu adds `--confirm-unfollow-everyone` as required by the plugin. Run `cct` with the usual CLI form when you need flags not shown in a preset.
 
 ### Debug mode
 

@@ -6,7 +6,7 @@ This folder contains the command runtime, router, and local persistence services
 
 - `cli.ts`: CLI entry logic, argument parsing, interactive fallback, top-level error handling. When the path comes from the interactive menu, `rawArgs` is rebuilt (e.g. `api`, `bluesky`, `read`, plus any flags) so plugins see the same flag layout as a typed invocation.
 - `bluesky-commands.ts`: `BLUESKY_COMMAND_LABELS` for the Bluesky action menu; keep keys in sync with `commandTree.api.bluesky` (see `assertBlueskyCommandLabelsInSyncWithRouter` and `test/bluesky-labels.test.mjs`).
-- `bluesky-menu.ts`: second-level interactive prompts (flag presets) after choosing a Bluesky command.
+- `bluesky-menu.ts`: second-level interactive prompts (flag presets) after choosing a Bluesky command; unfollow presets and auto-follow also use `chooseBlueskyExecutionMode` (dry-run vs live, with confirm on live).
 - `router.ts`: namespace/group/command routing and dynamic imports for plugins.
 - `types.ts`: shared command/context interfaces.
 - `auth.ts`: secret/session read/write service backed by `~/.cli-commander/secrets.json`.
