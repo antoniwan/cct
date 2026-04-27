@@ -17,6 +17,20 @@ export function getFlag(rawArgs: string[], name: string): string | undefined {
   return index >= 0 ? rawArgs[index + 1] : undefined;
 }
 
+/**
+ * Comma-separated values, e.g. `a,b` → ["a", "b"]. Trims; drops empties.
+ */
+export function getCommaListFlag(rawArgs: string[], name: string): string[] {
+  const raw = getFlag(rawArgs, name);
+  if (!raw) {
+    return [];
+  }
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
 export function getNumberFlag(
   rawArgs: string[],
   name: string,

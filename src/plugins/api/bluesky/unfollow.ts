@@ -2,7 +2,13 @@ import { checkbox, confirm, input, select } from "@inquirer/prompts";
 import chalk from "chalk";
 
 import type { Command } from "../../../core/types.js";
-import { getFlag, getNumberFlag, hasFlag, loadAgentFromSession } from "./client.js";
+import {
+  getCommaListFlag,
+  getFlag,
+  getNumberFlag,
+  hasFlag,
+  loadAgentFromSession
+} from "./client.js";
 import {
   buildEntryFromApi,
   canUseCachedProfile,
@@ -19,6 +25,8 @@ type FollowCandidate = {
   followingCount: number;
   postsCount: number;
   lastPostAt: string | null;
+  /** `true` if this account follows you back (set when profile is loaded). */
+  theyFollowMe?: boolean;
 };
 
 type CriteriaContext = {
@@ -27,8 +35,12 @@ type CriteriaContext = {
   maxFollowers: number | null;
   maxFollowing: number | null;
   maxPosts: number | null;
+  minFollowers: number | null;
+  minPosts: number | null;
   lessFollowersThanMe: boolean;
   requireNoRecentPosts: boolean;
+  unfollowWhoDontFollowBack: boolean;
+  excludeHandleSubstrings: string[];
 };
 
 function daysSince(isoDate: string | null): number {
@@ -70,6 +82,17 @@ function getNonNegativeFlag(rawArgs: string[], name: string, fallback: number): 
 function rkeyFromUri(uri: string): string {
   const parts = uri.split("/");
   return parts[parts.length - 1] || "";
+}
+
+function isHandleExcluded(
+  handle: string,
+  substrings: string[]
+): boolean {
+  if (substrings.length === 0) {
+    return false;
+  }
+  const h = (handle || "").toLowerCase();
+  return substrings.some((s) => h.includes(s.toLowerCase()));
 }
 
 function isRetriableApiError(err: unknown): boolean {
@@ -165,21 +188,68 @@ export const command: Command = {
     const cacheTtlMinutes = getNonNegativeFlag(rawArgs, "cache-ttl-minutes", 60);
     const useProfileCache = !noCache && cacheTtlMinutes > 0;
     const cacheTtlMs = cacheTtlMinutes * 60 * 1000;
+    let unfollowEveryone = hasFlag(rawArgs, "unfollow-everyone");
+    const confirmUnfollowEveryone = hasFlag(rawArgs, "confirm-unfollow-everyone");
+    let unfollowWhoDontFollowBack = hasFlag(rawArgs, "unfollow-who-dont-follow-back");
+    const minFollowers = parseOptionalPositiveNumber(rawArgs, "min-followers");
+    const minPosts = parseOptionalPositiveNumber(rawArgs, "min-posts");
+    const excludeHandleSubstrings = getCommaListFlag(
+      rawArgs,
+      "exclude-handle-contains"
+    );
 
     if (matchMode !== "all" && matchMode !== "any") {
       throw new Error("--match must be either 'all' or 'any'.");
     }
 
-    const hasAnyCriteria =
+    const hasRuleCriteria =
       examplePolicy ||
       lessFollowersThanMe ||
       requireNoRecentPosts ||
       maxFollowers !== null ||
       maxFollowing !== null ||
-      maxPosts !== null;
+      maxPosts !== null ||
+      unfollowWhoDontFollowBack ||
+      minFollowers !== null ||
+      minPosts !== null;
+    const hasAnyCriteria = hasRuleCriteria || unfollowEveryone;
 
     if (!hasAnyCriteria || interactive) {
       console.log(chalk.cyan("🧭 Interactive unfollow setup"));
+      if (interactive) {
+        const wantNuke = await confirm({
+          message:
+            "Nuclear: unfollow everyone in the scan (still respects --exclude-style patterns if you set them in your command)?",
+          default: false
+        });
+        if (wantNuke) {
+          unfollowEveryone = true;
+        }
+      }
+
+      if (unfollowEveryone) {
+        matchMode = "all";
+        const rawLimit = await input({
+          message: "How many followed accounts should be in the scan? (ignored in all mode)",
+          default: String(limit),
+          required: true
+        });
+        const parsedLimit = Number(rawLimit);
+        if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
+          throw new Error("Limit must be a positive number.");
+        }
+        limit = parsedLimit;
+
+        allMode = await confirm({
+          message: "Scan all followed accounts (full cleanup mode)?",
+          default: allMode
+        });
+
+        dryRun = await confirm({
+          message: "Run in dry-run first (strongly recommended)?",
+          default: true
+        });
+      } else {
       examplePolicy = await confirm({
         message:
           "Use preset policy? (fewer followers than you AND no posts in last year)",
@@ -214,12 +284,20 @@ export const command: Command = {
               name: "Posts count <= max value",
               value: "max-posts",
               checked: maxPosts !== null
+            },
+            {
+              name: "They do not follow me back (one-way follows only)",
+              value: "unfollow-who-dont-follow-back",
+              checked: unfollowWhoDontFollowBack
             }
           ]
         });
 
         lessFollowersThanMe = selected.includes("less-followers-than-me");
         requireNoRecentPosts = selected.includes("no-posts-since");
+        unfollowWhoDontFollowBack = selected.includes(
+          "unfollow-who-dont-follow-back"
+        );
 
         if (selected.includes("no-posts-since")) {
           const rawDays = await input({
@@ -316,12 +394,39 @@ export const command: Command = {
         message: "Run in dry-run mode (recommended)?",
         default: true
       });
+      }
+    }
+
+    if (unfollowEveryone) {
+      if (
+        examplePolicy ||
+        lessFollowersThanMe ||
+        requireNoRecentPosts ||
+        maxFollowers !== null ||
+        maxFollowing !== null ||
+        maxPosts !== null ||
+        unfollowWhoDontFollowBack ||
+        minFollowers !== null ||
+        minPosts !== null
+      ) {
+        throw new Error(
+          "Do not combine --unfollow-everyone with rule-based filters. Allowed with nuclear: --all, --limit, --dry-run, --exclude-handle-contains, --throttle-ms, --no-cache, --cache-ttl-minutes, --confirm-unfollow-everyone."
+        );
+      }
+    }
+
+    if (unfollowEveryone && !dryRun && !confirmUnfollowEveryone) {
+      throw new Error(
+        "Nuclear: run with --dry-run first. To actually unfollow everyone in the scan, add --confirm-unfollow-everyone (excludes in --exclude-handle-contains are still applied)."
+      );
     }
 
     // Enables the exact policy requested: lower follower count than me AND no posts in the last year.
     const finalLessFollowersThanMe = lessFollowersThanMe || examplePolicy;
     const finalRequireNoRecentPosts = requireNoRecentPosts || examplePolicy;
     const finalInactiveDays = examplePolicy ? 365 : inactiveDays;
+    const finalNeedLastPost = finalRequireNoRecentPosts && !unfollowEveryone;
+    const needFollowBackInfo = unfollowWhoDontFollowBack;
 
     const myProfile = await withApiRetry("getProfile (me)", () =>
       agent.getProfile({ actor: me })
@@ -336,8 +441,8 @@ export const command: Command = {
     console.log(chalk.cyan("🧹 Evaluating follows for unfollow rules..."));
     console.log(
       chalk.gray(
-        `Mode=${matchMode.toUpperCase()} | scope=${allMode ? "ALL_FOLLOWS" : `LIMIT_${limit}`} | dryRun=${dryRun ? "yes" : "no"} | throttleMs=${throttleMs} | profileCache=${
-          useProfileCache ? `${cacheTtlMinutes}m` : "off"
+        `Mode=${matchMode.toUpperCase()} | scope=${allMode ? "ALL_FOLLOWS" : `LIMIT_${limit}`} | dryRun=${dryRun ? "yes" : "no"} | nuclear=${unfollowEveryone ? "yes" : "no"} | throttleMs=${throttleMs} | profileCache=${
+          useProfileCache && !unfollowEveryone ? `${cacheTtlMinutes}m` : unfollowEveryone ? "skipped" : "off"
         }`
       )
     );
@@ -383,44 +488,123 @@ export const command: Command = {
       return;
     }
 
-    const step2Label = finalRequireNoRecentPosts
-      ? "Loading profiles + last post time"
-      : "Loading profiles only (skipping feed; no inactive-post rule)";
-    console.log(
-      chalk.gray(`Step 2/4: ${step2Label} for ${follows.length} account(s)...`)
-    );
     const candidates: FollowCandidate[] = [];
-    let profiled = 0;
-    for (const [index, followed] of follows.entries()) {
-      const followUri = followed.viewer?.following;
-      if (!followUri) {
-        profiled += 1;
-        if (profiled % 10 === 0 || profiled === follows.length) {
-          console.log(
-            chalk.gray(
-              `  - profiled ${profiled}/${follows.length} (cache ${cacheHits} hits, ${cacheMisses} API)`
-            )
-          );
+
+    if (unfollowEveryone) {
+      console.log(
+        chalk.magenta(
+          "Step 2/4: Nuclear path — no per-account profile API calls. Only follow list + excludes."
+        )
+      );
+      for (const followed of follows) {
+        const followUri = followed.viewer?.following;
+        if (!followUri) {
+          continue;
         }
-        continue;
-      }
-      const handleLabel = followed.handle || followed.did;
-      const needLastPost = finalRequireNoRecentPosts;
-      const cached = profileCache.entries[followed.did];
-      if (
-        useProfileCache &&
-        canUseCachedProfile(cached, cacheTtlMs, needLastPost)
-      ) {
-        cacheHits += 1;
+        if (isHandleExcluded(followed.handle, excludeHandleSubstrings)) {
+          continue;
+        }
         candidates.push({
           did: followed.did,
           handle: followed.handle,
           displayName: followed.displayName,
           followUri,
-          followersCount: cached!.followersCount,
-          followingCount: cached!.followingCount,
-          postsCount: cached!.postsCount,
-          lastPostAt: needLastPost ? cached!.lastPostAt : null
+          followersCount: 0,
+          followingCount: 0,
+          postsCount: 0,
+          lastPostAt: null
+        });
+      }
+    } else {
+      const step2Label = finalNeedLastPost
+        ? "Loading profiles + last post time"
+        : "Loading profiles only (skipping feed; no inactive-post rule)";
+      console.log(
+        chalk.gray(`Step 2/4: ${step2Label} for ${follows.length} account(s)...`)
+      );
+      let profiled = 0;
+      for (const [index, followed] of follows.entries()) {
+        const followUri = followed.viewer?.following;
+        if (!followUri) {
+          profiled += 1;
+          if (profiled % 10 === 0 || profiled === follows.length) {
+            console.log(
+              chalk.gray(
+                `  - profiled ${profiled}/${follows.length} (cache ${cacheHits} hits, ${cacheMisses} API)`
+              )
+            );
+          }
+          continue;
+        }
+        const handleLabel = followed.handle || followed.did;
+        const needLastPost = finalNeedLastPost;
+        const cached = profileCache.entries[followed.did];
+        if (
+          useProfileCache &&
+          canUseCachedProfile(
+            cached,
+            cacheTtlMs,
+            needLastPost,
+            needFollowBackInfo
+          )
+        ) {
+          cacheHits += 1;
+          candidates.push({
+            did: followed.did,
+            handle: followed.handle,
+            displayName: followed.displayName,
+            followUri,
+            followersCount: cached!.followersCount,
+            followingCount: cached!.followingCount,
+            postsCount: cached!.postsCount,
+            lastPostAt: needLastPost ? cached!.lastPostAt : null,
+            theyFollowMe: cached?.theyFollowMe
+          });
+          profiled = index + 1;
+          if (profiled % 10 === 0 || profiled === follows.length) {
+            console.log(
+              chalk.gray(
+                `  - profiled ${profiled}/${follows.length} (cache ${cacheHits} hits, ${cacheMisses} API)`
+              )
+            );
+          }
+          if (throttleMs > 0 && index < follows.length - 1) {
+            await sleep(throttleMs);
+          }
+          continue;
+        }
+
+        cacheMisses += 1;
+        const profile = await withApiRetry(`getProfile @${handleLabel}`, () =>
+          agent.getProfile({ actor: followed.did })
+        );
+        const lastPostAt = needLastPost
+          ? await withApiRetry(`getAuthorFeed @${handleLabel}`, () => getLastPostAt(agent, followed.did))
+          : null;
+        const theyFollowMe = Boolean(
+          (profile.data as { viewer?: { followedBy?: string } }).viewer?.followedBy
+        );
+        profileCache.entries[followed.did] = buildEntryFromApi({
+          handle: followed.handle,
+          followersCount: profile.data.followersCount ?? 0,
+          followingCount: profile.data.followsCount ?? 0,
+          postsCount: profile.data.postsCount ?? 0,
+          lastPostFetched: needLastPost,
+          lastPostAt: needLastPost ? lastPostAt : null,
+          theyFollowMe
+        });
+        profileCache.accountDid = accountDid;
+
+        candidates.push({
+          did: followed.did,
+          handle: followed.handle,
+          displayName: followed.displayName,
+          followUri,
+          followersCount: profile.data.followersCount ?? 0,
+          followingCount: profile.data.followsCount ?? 0,
+          postsCount: profile.data.postsCount ?? 0,
+          lastPostAt,
+          theyFollowMe
         });
         profiled = index + 1;
         if (profiled % 10 === 0 || profiled === follows.length) {
@@ -433,57 +617,17 @@ export const command: Command = {
         if (throttleMs > 0 && index < follows.length - 1) {
           await sleep(throttleMs);
         }
-        continue;
       }
 
-      cacheMisses += 1;
-      const profile = await withApiRetry(`getProfile @${handleLabel}`, () =>
-        agent.getProfile({ actor: followed.did })
-      );
-      const lastPostAt = needLastPost
-        ? await withApiRetry(`getAuthorFeed @${handleLabel}`, () => getLastPostAt(agent, followed.did))
-        : null;
-      profileCache.entries[followed.did] = buildEntryFromApi({
-        handle: followed.handle,
-        followersCount: profile.data.followersCount ?? 0,
-        followingCount: profile.data.followsCount ?? 0,
-        postsCount: profile.data.postsCount ?? 0,
-        lastPostFetched: needLastPost,
-        lastPostAt: needLastPost ? lastPostAt : null
-      });
-      profileCache.accountDid = accountDid;
-
-      candidates.push({
-        did: followed.did,
-        handle: followed.handle,
-        displayName: followed.displayName,
-        followUri,
-        followersCount: profile.data.followersCount ?? 0,
-        followingCount: profile.data.followsCount ?? 0,
-        postsCount: profile.data.postsCount ?? 0,
-        lastPostAt
-      });
-      profiled = index + 1;
-      if (profiled % 10 === 0 || profiled === follows.length) {
+      if (useProfileCache) {
+        profileCache.accountDid = accountDid;
+        await saveProfileCache(ctx, profileCache);
         console.log(
           chalk.gray(
-            `  - profiled ${profiled}/${follows.length} (cache ${cacheHits} hits, ${cacheMisses} API)`
+            `  Step 2 done: ${cacheHits} cache hit(s), ${cacheMisses} API fetch(es). Stale entries refresh after --cache-ttl-minutes (default 60, stored in state).`
           )
         );
       }
-      if (throttleMs > 0 && index < follows.length - 1) {
-        await sleep(throttleMs);
-      }
-    }
-
-    if (useProfileCache) {
-      profileCache.accountDid = accountDid;
-      await saveProfileCache(ctx, profileCache);
-      console.log(
-        chalk.gray(
-          `  Step 2 done: ${cacheHits} cache hit(s), ${cacheMisses} API fetch(es). Stale entries refresh after --cache-ttl-minutes (default 60, stored in state).`
-        )
-      );
     }
 
     const criteriaCtx: CriteriaContext = {
@@ -492,13 +636,26 @@ export const command: Command = {
       maxFollowers,
       maxFollowing,
       maxPosts,
+      minFollowers,
+      minPosts,
       lessFollowersThanMe: finalLessFollowersThanMe,
-      requireNoRecentPosts: finalRequireNoRecentPosts
+      requireNoRecentPosts: finalRequireNoRecentPosts,
+      unfollowWhoDontFollowBack,
+      excludeHandleSubstrings
     };
 
     console.log(chalk.gray("Step 3/4: Applying criteria filters..."));
     const matched = candidates.filter((candidate) => {
+      if (isHandleExcluded(candidate.handle, criteriaCtx.excludeHandleSubstrings)) {
+        return false;
+      }
+      if (unfollowEveryone) {
+        return true;
+      }
       const checks: boolean[] = [];
+      if (criteriaCtx.unfollowWhoDontFollowBack) {
+        checks.push(candidate.theyFollowMe === false);
+      }
       if (criteriaCtx.lessFollowersThanMe) {
         checks.push(candidate.followersCount < criteriaCtx.myFollowersCount);
       }
@@ -506,17 +663,23 @@ export const command: Command = {
         checks.push(daysSince(candidate.lastPostAt) >= criteriaCtx.inactiveDays);
       }
       if (criteriaCtx.maxFollowers !== null) {
-        checks.push(candidate.followersCount <= criteriaCtx.maxFollowers);
+        checks.push(candidate.followersCount <= criteriaCtx.maxFollowers!);
       }
       if (criteriaCtx.maxFollowing !== null) {
-        checks.push(candidate.followingCount <= criteriaCtx.maxFollowing);
+        checks.push(candidate.followingCount <= criteriaCtx.maxFollowing!);
       }
       if (criteriaCtx.maxPosts !== null) {
-        checks.push(candidate.postsCount <= criteriaCtx.maxPosts);
+        checks.push(candidate.postsCount <= criteriaCtx.maxPosts!);
+      }
+      if (criteriaCtx.minFollowers !== null) {
+        checks.push(candidate.followersCount >= criteriaCtx.minFollowers!);
+      }
+      if (criteriaCtx.minPosts !== null) {
+        checks.push(candidate.postsCount >= criteriaCtx.minPosts!);
       }
       if (checks.length === 0) {
         throw new Error(
-          "No unfollow criteria provided. Add at least one filter, or use --example-policy."
+          "No unfollow criteria provided. Add filters, --example-policy, or --unfollow-everyone."
         );
       }
       return matchMode === "all" ? checks.every(Boolean) : checks.some(Boolean);
@@ -527,16 +690,30 @@ export const command: Command = {
       return;
     }
 
-    console.log(
-      chalk.cyan(
-        `Summary: ${matched.length} of ${candidates.length} account(s) in this run matched your rules. Step 4 unfollows only that matched set, not your whole follow list.`
-      )
-    );
+    if (unfollowEveryone) {
+      console.log(
+        chalk.cyan(
+          `Summary: nuclear mode — ${matched.length} account(s) to unfollow from this scan (after excludes). No profile stats were loaded.`
+        )
+      );
+    } else {
+      console.log(
+        chalk.cyan(
+          `Summary: ${matched.length} of ${candidates.length} account(s) in this run matched your rules. Step 4 unfollows only that matched set, not your whole follow list.`
+        )
+      );
+    }
     console.log(chalk.cyan(`🎯 Matched ${matched.length} user(s):`));
     for (const user of matched) {
       const label = user.displayName
         ? `${user.displayName} (@${user.handle})`
         : `@${user.handle}`;
+      if (unfollowEveryone) {
+        console.log(
+          `- ${chalk.blue(label)} ${chalk.gray("(nuclear: stats not loaded)")}`
+        );
+        continue;
+      }
       const inactiveFor = Math.floor(daysSince(user.lastPostAt));
       const inactiveText =
         Number.isFinite(inactiveFor) ? `${inactiveFor}d` : "no-posts";

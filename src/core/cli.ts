@@ -3,6 +3,8 @@ import chalk from "chalk";
 import { Command as Commander } from "commander";
 
 import { createAuthService } from "./auth.js";
+import { BLUESKY_COMMAND_LABELS } from "./bluesky-commands.js";
+import { promptBlueskyArgSuffix } from "./bluesky-menu.js";
 import { commandTree, loadCommand } from "./router.js";
 import { createStateService } from "./state.js";
 import type { CommandPath } from "./router.js";
@@ -16,16 +18,13 @@ const API_SERVICE_LABELS: Record<string, string> = {
   bluesky: "🦋 bluesky - Social API actions from CLI"
 };
 
-const BLUESKY_COMMAND_LABELS: Record<string, string> = {
-  login: "🔐 login - Connect account with web auth handoff",
-  post: "📝 post - Publish a single post",
-  read: "📖 read - Read timeline or author feed",
-  extract: "📦 extract - Export posts to JSON",
-  followers: "👥 followers - List latest followers",
-  unfollow: "🧹 unfollow - Guided criteria-based unfollow",
-  "auto-post": "🤖 auto-post - Publish repeated posts on interval",
-  "auto-follow": "🤝 auto-follow - Follow target followers (automation)"
-};
+/** Recreates the argv a user would type for this path, so `rawArgs` is consistent in interactive mode. */
+function pathToRawArgs(path: CommandPath): string[] {
+  if (path[0] === "sys") {
+    return ["sys", path[2]];
+  }
+  return ["api", path[1], path[2]];
+}
 
 function makeContext(debug: boolean): Context {
   return {
@@ -135,9 +134,23 @@ export async function runCli(argv: string[]): Promise<void> {
     }
 
     const command = await loadCommand(path);
+
+    let rawArgs: string[];
+    if (args.length > 0) {
+      rawArgs = args;
+    } else {
+      const base = pathToRawArgs(path);
+      if (path[0] === "api" && path[1] === "bluesky") {
+        const extra = await promptBlueskyArgSuffix(path[2]);
+        rawArgs = [...base, ...extra];
+      } else {
+        rawArgs = base;
+      }
+    }
+
     await command.run(ctx, {
       options: opts,
-      rawArgs: args
+      rawArgs
     });
   } catch (error) {
     const message =

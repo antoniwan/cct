@@ -88,6 +88,8 @@ Examples:
 cct
 ```
 
+This walks the namespace, service, and command menus. If you pick **api** → **bluesky** → a command, a **second menu** offers common flag presets for that tool (or “defaults / prompts” where there are no flags), so the same `cct api bluesky <cmd> …` run receives full `rawArgs` as if you had typed the command. Run `cct` with the usual CLI form when you need flags not shown in a preset.
+
 ### Debug mode
 
 `--debug` prints stack traces on errors:
@@ -273,6 +275,31 @@ cct api bluesky unfollow \
   --dry-run
 ```
 
+One-way follows only (they do not follow you back), dry-run:
+
+```bash
+cct api bluesky unfollow --all --unfollow-who-dont-follow-back --dry-run
+```
+
+**Nuclear (unfollow everyone in the scan)** — preview, then execute with confirmation:
+
+```bash
+cct api bluesky unfollow --all --unfollow-everyone --dry-run
+cct api bluesky unfollow --all --unfollow-everyone --confirm-unfollow-everyone
+```
+
+Keep specific accounts (substring match on handle):
+
+```bash
+cct api bluesky unfollow --all --unfollow-everyone --dry-run --exclude-handle-contains "close,family"
+```
+
+#### How to choose a strategy
+
+- **You hardly use the account** and want a clean slate: use **nuclear** with `--dry-run` first, check the list, then add `--confirm-unfollow-everyone` only if the list looks right. Use `--exclude-handle-contains` for accounts you must keep.
+- **You want to trim quietly:** use **rules** (`--example-policy`, min/max counts, inactivity) or **one-way** (`--unfollow-who-dont-follow-back`) and always start with `--dry-run`.
+- Nuclear **cannot** be combined with rule-based flags; it only respects scan options, throttle, cache off path, excludes, and dry-run / confirm.
+
 Unfollow options:
 
 - `--example-policy`  
@@ -291,6 +318,11 @@ Unfollow options:
 - `--throttle-ms <n>` optional pause between accounts (0 = no pause; try 25–100 on long runs)
 - `--cache-ttl-minutes <n>` (default `60`, `0` = same as no cache) reuse recent profile + last-post data from a local cache to skip duplicate API calls on the next run
 - `--no-cache` do not read or write the profile cache
+- `--unfollow-everyone` (nuclear) match **every** follow in the current scan, except any handle that matches `--exclude-handle-contains`. Does not load per-account profile stats; cannot be combined with other rule flags.
+- `--confirm-unfollow-everyone` required for a **real** nuclear run (not dry-run)
+- `--unfollow-who-dont-follow-back` only accounts that **do not** follow you back
+- `--min-followers <n>`, `--min-posts <n>` lower bounds (with max flags for upper bounds)
+- `--exclude-handle-contains` comma-separated substrings; if a handle contains one, that account is **never** unfollowed in that run
 
 **Matching vs unfollowing:** After step 2, the tool evaluates **every** account in the current scan. Step 3 keeps only accounts that pass your rules. Step 4 unfollows **that** matched set. Example: you might scan 1,900+ follows but only 48 match “fewer followers than me and inactive a year” — the command unfollows those 48, not 1,900. The number `50` in `--limit` is only the default **scan** size when you do **not** use `--all`; it is not a cap on how many accounts you can unfollow in step 4.
 

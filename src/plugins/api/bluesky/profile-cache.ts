@@ -10,6 +10,8 @@ export type ProfileCacheEntry = {
   /** When false, `lastPostAt` was not loaded; do not use for inactivity rules. */
   lastPostFetched: boolean;
   lastPostAt: string | null;
+  /** Whether this account follows you back (from profile viewer). Omitted on old cache entries. */
+  theyFollowMe?: boolean;
   cachedAt: string;
 };
 
@@ -67,6 +69,7 @@ export function buildEntryFromApi(args: {
   postsCount: number;
   lastPostFetched: boolean;
   lastPostAt: string | null;
+  theyFollowMe: boolean;
 }): ProfileCacheEntry {
   return {
     handle: args.handle,
@@ -75,6 +78,7 @@ export function buildEntryFromApi(args: {
     postsCount: args.postsCount,
     lastPostFetched: args.lastPostFetched,
     lastPostAt: args.lastPostAt,
+    theyFollowMe: args.theyFollowMe,
     cachedAt: new Date().toISOString()
   };
 }
@@ -87,7 +91,8 @@ function hasSafeLastPostData(entry: ProfileCacheEntry): boolean {
 export function canUseCachedProfile(
   entry: ProfileCacheEntry | undefined,
   ttlMs: number,
-  needLastPost: boolean
+  needLastPost: boolean,
+  needFollowBack = false
 ): boolean {
   if (!entry) {
     return false;
@@ -101,8 +106,8 @@ export function canUseCachedProfile(
   if (needLastPost && !hasSafeLastPostData(entry)) {
     return false;
   }
-  if (!needLastPost) {
-    return true;
+  if (needFollowBack && typeof entry.theyFollowMe !== "boolean") {
+    return false;
   }
-  return hasSafeLastPostData(entry);
+  return true;
 }
