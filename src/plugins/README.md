@@ -20,6 +20,10 @@ Plugins provide command behavior. Keep them focused and local.
 - `api/bluesky/extract.ts`
   - Extracts feed posts to JSON via `--out`.
   - Supports `--actor` and `--limit`.
+- `api/bluesky/followers.ts`
+  - Lists latest followers for `--actor`.
+  - Defaults to logged-in handle when `--actor` is omitted.
+  - Supports `--limit`.
 - `api/bluesky/auto-post.ts`
   - Repeated posting with `--times` and `--intervalSeconds`.
 - `api/bluesky/auto-follow.ts`
