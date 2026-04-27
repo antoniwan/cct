@@ -159,6 +159,7 @@ export const command: Command = {
   name: "login",
   description: "Authenticate with Bluesky via local web flow",
   run: async (ctx) => {
+    console.log(chalk.cyan("🦋 Starting Bluesky web authentication..."));
     const payload = await listenForLogin();
     const agent = await createAgent(payload.service);
     await agent.login({
@@ -167,7 +168,16 @@ export const command: Command = {
     });
 
     await saveAgentSession(ctx, agent);
-    console.log(chalk.green(`Bluesky authenticated as ${agent.session?.handle ?? payload.identifier}`));
-    console.log(chalk.gray("Session saved to ~/.cli-commander/secrets.json"));
+    console.log(
+      chalk.green(
+        `✅ Authenticated as ${agent.session?.handle ?? payload.identifier}`
+      )
+    );
+    console.log(chalk.gray("💾 Session saved to ~/.cli-commander/secrets.json"));
+    console.log(
+      chalk.cyan(
+        "➡️  Next: cct api bluesky followers --limit 10"
+      )
+    );
   }
 };

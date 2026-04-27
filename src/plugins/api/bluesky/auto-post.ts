@@ -30,13 +30,20 @@ export const command: Command = {
       throw new Error("Post text cannot be empty.");
     }
 
+    console.log(
+      chalk.cyan(
+        `🤖 Starting auto-post: ${times} post(s), every ${intervalSeconds}s`
+      )
+    );
     for (let i = 0; i < times; i += 1) {
       const payload = times > 1 ? `${baseText.trim()} (${i + 1}/${times})` : baseText.trim();
       await agent.post({ text: payload });
-      console.log(chalk.green(`Posted ${i + 1}/${times}`));
+      console.log(chalk.green(`✅ Posted ${i + 1}/${times}`));
       if (i < times - 1) {
+        console.log(chalk.gray(`⏳ Waiting ${intervalSeconds}s before next post...`));
         await wait(intervalSeconds * 1000);
       }
     }
+    console.log(chalk.green("🎉 Auto-post run complete."));
   }
 };

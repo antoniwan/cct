@@ -40,7 +40,9 @@ export function hasFlag(rawArgs: string[], name: string): boolean {
 export async function loadAgentFromSession(ctx: Context): Promise<BskyAgent> {
   const rawSession = await ctx.auth.get(SESSION_KEY);
   if (!rawSession) {
-    throw new Error("Missing Bluesky session. Run: cct api bluesky login");
+    throw new Error(
+      "No Bluesky session found. Run: cct api bluesky login"
+    );
   }
 
   let parsed: StoredSession;
@@ -48,7 +50,7 @@ export async function loadAgentFromSession(ctx: Context): Promise<BskyAgent> {
     parsed = JSON.parse(rawSession) as StoredSession;
   } catch {
     throw new Error(
-      "Bluesky session is invalid. Re-authenticate: cct api bluesky login"
+      "Saved Bluesky session is unreadable. Re-authenticate: cct api bluesky login"
     );
   }
 
@@ -57,7 +59,9 @@ export async function loadAgentFromSession(ctx: Context): Promise<BskyAgent> {
   try {
     await agent.resumeSession(parsed.session);
   } catch {
-    throw new Error("Bluesky session expired. Re-authenticate: cct api bluesky login");
+    throw new Error(
+      "Bluesky session expired. Re-authenticate: cct api bluesky login"
+    );
   }
 
   return agent;

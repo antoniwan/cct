@@ -22,16 +22,16 @@ export const command: Command = {
     const followers = response.data.followers;
 
     if (followers.length === 0) {
-      console.log(chalk.yellow(`No followers found for ${actor}.`));
+      console.log(chalk.yellow(`⚠️ No followers found for ${actor}.`));
       return;
     }
 
-    console.log(chalk.cyan(`Latest followers for ${actor}:`));
+    console.log(chalk.cyan(`👥 Latest followers for ${actor} (max ${limit}):`));
     for (const user of followers) {
       const label = user.displayName
         ? `${user.displayName} (@${user.handle})`
         : `@${user.handle}`;
-      console.log(`- ${label}`);
+      console.log(`- ${chalk.blue(label)}`);
     }
   }
 };

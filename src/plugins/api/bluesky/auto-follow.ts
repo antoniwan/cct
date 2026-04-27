@@ -19,26 +19,33 @@ export const command: Command = {
 
     const followers = (await agent.getFollowers({ actor, limit })).data.followers;
     if (followers.length === 0) {
-      console.log(chalk.yellow(`No followers found for ${actor}.`));
+      console.log(chalk.yellow(`⚠️ No followers found for ${actor}.`));
       return;
     }
 
+    console.log(
+      chalk.cyan(
+        dryRun
+          ? `🧪 Dry-run: evaluating up to ${limit} followers from ${actor}`
+          : `🤝 Following up to ${limit} followers from ${actor}`
+      )
+    );
     let followed = 0;
     for (const follower of followers) {
       if (dryRun) {
-        console.log(chalk.cyan(`[dry-run] Would follow ${follower.handle}`));
+        console.log(chalk.blue(`- would follow @${follower.handle}`));
         continue;
       }
       await agent.follow(follower.did);
       followed += 1;
-      console.log(chalk.green(`Followed ${follower.handle}`));
+      console.log(chalk.green(`✅ Followed @${follower.handle}`));
     }
 
     if (dryRun) {
-      console.log(chalk.green(`Dry-run complete. ${followers.length} users evaluated.`));
+      console.log(chalk.green(`✅ Dry-run complete. ${followers.length} users evaluated.`));
       return;
     }
 
-    console.log(chalk.green(`Auto-follow complete. Followed ${followed} users.`));
+    console.log(chalk.green(`🎉 Auto-follow complete. Followed ${followed} users.`));
   }
 };

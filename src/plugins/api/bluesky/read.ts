@@ -17,14 +17,21 @@ export const command: Command = {
       : (await agent.getTimeline({ limit })).data.feed;
 
     if (posts.length === 0) {
-      console.log(chalk.yellow("No posts found."));
+      console.log(chalk.yellow("⚠️ No posts found for this query."));
       return;
     }
 
+    console.log(
+      chalk.cyan(
+        actor
+          ? `📖 Showing up to ${limit} posts from ${actor}`
+          : `📖 Showing up to ${limit} posts from your home timeline`
+      )
+    );
     for (const item of posts) {
       const post = item.post;
       const text = post.record && "text" in post.record ? String(post.record.text) : "";
-      console.log(chalk.cyan(`${post.author.handle} (${post.indexedAt})`));
+      console.log(chalk.blue(`👤 ${post.author.handle} (${post.indexedAt})`));
       console.log(text.trim() || chalk.gray("[non-text post]"));
       console.log(chalk.gray("---"));
     }

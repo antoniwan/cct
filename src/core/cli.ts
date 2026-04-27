@@ -8,6 +8,24 @@ import { createStateService } from "./state.js";
 import type { CommandPath } from "./router.js";
 import type { Context } from "./types.js";
 
+const SYS_COMMAND_LABELS: Record<string, string> = {
+  update: "🔧 update - Update local tooling on this machine"
+};
+
+const API_SERVICE_LABELS: Record<string, string> = {
+  bluesky: "🦋 bluesky - Social API actions from CLI"
+};
+
+const BLUESKY_COMMAND_LABELS: Record<string, string> = {
+  login: "🔐 login - Connect account with web auth handoff",
+  post: "📝 post - Publish a single post",
+  read: "📖 read - Read timeline or author feed",
+  extract: "📦 extract - Export posts to JSON",
+  followers: "👥 followers - List latest followers",
+  "auto-post": "🤖 auto-post - Publish repeated posts on interval",
+  "auto-follow": "🤝 auto-follow - Follow target followers (automation)"
+};
+
 function makeContext(debug: boolean): Context {
   return {
     auth: createAuthService(),
@@ -44,33 +62,40 @@ function parsePath(input: string[]): CommandPath | null {
 
 async function interactivePath(): Promise<CommandPath> {
   const namespace = await select({
-    message: "Select namespace",
+    message: "✨ Choose a workspace",
     choices: [
-      { name: "sys", value: "sys" },
-      { name: "api", value: "api" }
+      { name: "🛠️  sys - Local system operations", value: "sys" },
+      { name: "🌐 api - Connected API services", value: "api" }
     ]
   });
 
   if (namespace === "sys") {
     const cmd = await select({
-      message: "Select sys command",
-      choices: commandTree.sys.root.map((c) => ({ name: c, value: c }))
+      message: "🧰 Pick a system command",
+      choices: commandTree.sys.root.map((c) => ({
+        name: SYS_COMMAND_LABELS[c] ?? c,
+        value: c
+      }))
     });
     return ["sys", "root", cmd];
   }
 
   const service = await select({
-    message: "Select API service",
+    message: "🔌 Pick an API service",
     choices: Object.keys(commandTree.api).map((serviceName) => ({
-      name: serviceName,
+      name: API_SERVICE_LABELS[serviceName] ?? serviceName,
       value: serviceName
     }))
   });
 
   const commands = commandTree.api[service as keyof typeof commandTree.api];
   const cmd = await select({
-    message: `Select ${service} command`,
-    choices: commands.map((c) => ({ name: c, value: c }))
+    message: `🎯 Choose ${service} action`,
+    choices: commands.map((c) => ({
+      name:
+        service === "bluesky" ? (BLUESKY_COMMAND_LABELS[c] ?? c) : c,
+      value: c
+    }))
   });
 
   return ["api", service, cmd];
@@ -98,7 +123,7 @@ export async function runCli(argv: string[]): Promise<void> {
     const path = args.length > 0 ? parsePath(args) : await interactivePath();
     if (!path) {
       throw new Error(
-        "Invalid command. Try: cct sys update, cct api bluesky login, cct api bluesky post, cct api bluesky read, or cct api bluesky extract"
+        "Invalid command. Try one of: cct sys update, cct api bluesky login, cct api bluesky post, cct api bluesky read, cct api bluesky extract, cct api bluesky followers"
       );
     }
 
@@ -110,7 +135,7 @@ export async function runCli(argv: string[]): Promise<void> {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unexpected error";
-    console.error(chalk.red(`Error: ${message}`));
+    console.error(chalk.red(`❌ Error: ${message}`));
     if (opts.debug && error instanceof Error && error.stack) {
       console.error(chalk.gray(error.stack));
     }

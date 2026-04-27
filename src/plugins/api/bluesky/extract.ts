@@ -37,7 +37,8 @@ export const command: Command = {
       };
     });
 
+    console.log(chalk.cyan(`📦 Extracting ${posts.length} posts...`));
     await writeFile(out, `${JSON.stringify(posts, null, 2)}\n`, "utf8");
-    console.log(chalk.green(`Extracted ${posts.length} posts to ${out}`));
+    console.log(chalk.green(`✅ Extracted ${posts.length} posts to ${out}`));
   }
 };

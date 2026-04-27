@@ -23,11 +23,13 @@ export const command: Command = {
       throw new Error("Post text cannot be empty.");
     }
 
+    console.log(chalk.cyan("📝 Publishing post..."));
     await agent.post({ text: text.trim() });
-    console.log(chalk.green("Posted to Bluesky."));
+    console.log(chalk.green("✅ Posted to Bluesky."));
     await ctx.state.push("bluesky_posts", {
       text: text.trim(),
       createdAt: new Date().toISOString()
     });
+    console.log(chalk.gray("💡 Tip: use cct api bluesky read --limit 5 to verify timeline."));
   }
 };
