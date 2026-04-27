@@ -8,7 +8,7 @@ This folder contains the command runtime, router, and local persistence services
 - `router.ts`: namespace/group/command routing and dynamic imports for plugins.
 - `types.ts`: shared command/context interfaces.
 - `auth.ts`: secret/session read/write service backed by `~/.cli-commander/secrets.json`.
-- `state.ts`: generic JSON state service backed by `~/.cli-commander/state.json`.
+- `state.ts`: generic JSON state service backed by `~/.cli-commander/state.json` (e.g. `bluesky_unfollow_profile_cache` written by the Bluesky `unfollow` command when caching is enabled).
 
 ## Runtime Flow (Simple View)
 

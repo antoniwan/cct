@@ -33,7 +33,7 @@ Plugins provide command behavior. Keep them focused and local.
   - Unfollows users you currently follow based on criteria rules.
   - Opens a guided interactive criteria setup when no rule flags are passed.
   - Supports `--interactive` to force guided setup.
-  - Supports `--all` for full paginated scan, plus `--match all|any`, `--dry-run`, and multiple filters.
+  - Supports `--all` for full paginated scan, `--throttle-ms` to pace requests, profile cache via `--cache-ttl-minutes` / `--no-cache` (stored in `~/.cli-commander/state.json`), retries on transient network errors, plus `--match all|any`, `--dry-run`, and multiple filters.
   - Includes `--example-policy` (fewer followers than you AND no posts in last year).
 - `api/bluesky/auto-post.ts`
   - Repeated posting with `--times` and `--intervalSeconds`.

@@ -3,6 +3,12 @@ import chalk from "chalk";
 
 import type { Command } from "../../../core/types.js";
 import { getFlag, getNumberFlag, hasFlag, loadAgentFromSession } from "./client.js";
+import {
+  buildEntryFromApi,
+  canUseCachedProfile,
+  loadProfileCache,
+  saveProfileCache
+} from "./profile-cache.js";
 
 type FollowCandidate = {
   did: string;
@@ -49,12 +55,80 @@ function parseOptionalPositiveNumber(raw: string[], flag: string): number | null
   return parsed;
 }
 
+function getNonNegativeFlag(rawArgs: string[], name: string, fallback: number): number {
+  const raw = getFlag(rawArgs, name);
+  if (!raw) {
+    return fallback;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`--${name} must be a non-negative number.`);
+  }
+  return parsed;
+}
+
 function rkeyFromUri(uri: string): string {
   const parts = uri.split("/");
   return parts[parts.length - 1] || "";
 }
 
-async function getLastPostAt(agent: Awaited<ReturnType<typeof loadAgentFromSession>>, actor: string): Promise<string | null> {
+function isRetriableApiError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (
+    /fetch failed|network|econnreset|etimedout|eai_again|socket|aborted|timeout|429|502|503|504|rate|too many requests/i.test(
+      msg
+    )
+  ) {
+    return true;
+  }
+  const anyErr = err as { status?: number; $status?: number };
+  const code = anyErr?.status ?? anyErr?.$status;
+  if (code === 429 || code === 502 || code === 503 || code === 504) {
+    return true;
+  }
+  return false;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function withApiRetry<T>(
+  label: string,
+  fn: () => Promise<T>,
+  maxAttempts = 5
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt < maxAttempts && isRetriableApiError(err)) {
+        const waitMs = Math.min(1500 * 2 ** (attempt - 1), 30_000);
+        const detail = err instanceof Error ? err.message : String(err);
+        console.log(
+          chalk.yellow(
+            `  ⚠ ${label} failed (attempt ${attempt}/${maxAttempts}). ${detail} — retrying in ${Math.round(waitMs / 1000)}s...`
+          )
+        );
+        await sleep(waitMs);
+        continue;
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      if (attempt >= maxAttempts && isRetriableApiError(err)) {
+        throw new Error(`${label} failed after ${maxAttempts} attempt(s): ${detail}`);
+      }
+      throw new Error(`${label} failed: ${detail}`);
+    }
+  }
+  throw new Error(`${label}: internal retry error`);
+}
+
+async function getLastPostAt(
+  agent: Awaited<ReturnType<typeof loadAgentFromSession>>,
+  actor: string
+): Promise<string | null> {
   const feed = await agent.getAuthorFeed({ actor, limit: 1 });
   const item = feed.data.feed[0];
   if (!item) {
@@ -86,6 +160,11 @@ export const command: Command = {
     let maxFollowers = parseOptionalPositiveNumber(rawArgs, "max-followers");
     let maxFollowing = parseOptionalPositiveNumber(rawArgs, "max-following");
     let maxPosts = parseOptionalPositiveNumber(rawArgs, "max-posts");
+    const throttleMs = getNonNegativeFlag(rawArgs, "throttle-ms", 0);
+    const noCache = hasFlag(rawArgs, "no-cache");
+    const cacheTtlMinutes = getNonNegativeFlag(rawArgs, "cache-ttl-minutes", 60);
+    const useProfileCache = !noCache && cacheTtlMinutes > 0;
+    const cacheTtlMs = cacheTtlMinutes * 60 * 1000;
 
     if (matchMode !== "all" && matchMode !== "any") {
       throw new Error("--match must be either 'all' or 'any'.");
@@ -244,33 +323,59 @@ export const command: Command = {
     const finalRequireNoRecentPosts = requireNoRecentPosts || examplePolicy;
     const finalInactiveDays = examplePolicy ? 365 : inactiveDays;
 
-    const myProfile = await agent.getProfile({ actor: me });
+    const myProfile = await withApiRetry("getProfile (me)", () =>
+      agent.getProfile({ actor: me })
+    );
     const myFollowersCount = myProfile.data.followersCount ?? 0;
+
+    const accountDid = agent.session?.did ?? me;
+    const profileCache = await loadProfileCache(ctx, accountDid);
+    let cacheHits = 0;
+    let cacheMisses = 0;
 
     console.log(chalk.cyan("🧹 Evaluating follows for unfollow rules..."));
     console.log(
       chalk.gray(
-        `Mode=${matchMode.toUpperCase()} | scope=${allMode ? "ALL_FOLLOWS" : `LIMIT_${limit}`} | dryRun=${dryRun ? "yes" : "no"}`
+        `Mode=${matchMode.toUpperCase()} | scope=${allMode ? "ALL_FOLLOWS" : `LIMIT_${limit}`} | dryRun=${dryRun ? "yes" : "no"} | throttleMs=${throttleMs} | profileCache=${
+          useProfileCache ? `${cacheTtlMinutes}m` : "off"
+        }`
       )
     );
+    if (throttleMs > 0) {
+      console.log(
+        chalk.gray(
+          "  (pauses between accounts reduce rate limits; use --throttle-ms 0 to disable)"
+        )
+      );
+    }
+    console.log(chalk.gray("Step 1/4: Fetching followed accounts..."));
 
     const follows: Array<
       NonNullable<(Awaited<ReturnType<typeof agent.getFollows>>)["data"]["follows"]>[number]
     > = [];
     let cursor: string | undefined;
+    let page = 0;
     do {
       const pageLimit = allMode ? 100 : limit - follows.length;
       if (!allMode && pageLimit <= 0) {
         break;
       }
 
-      const response = await agent.getFollows({
-        actor: me,
-        limit: pageLimit,
-        cursor
-      });
+      const response = await withApiRetry(`getFollows (page ${page + 1})`, () =>
+        agent.getFollows({
+          actor: me,
+          limit: pageLimit,
+          cursor
+        })
+      );
+      page += 1;
       follows.push(...response.data.follows);
       cursor = response.data.cursor;
+      console.log(
+        chalk.gray(
+          `  - page ${page}: +${response.data.follows.length} accounts (total ${follows.length})`
+        )
+      );
     } while (allMode ? Boolean(cursor) : follows.length < limit);
 
     if (follows.length === 0) {
@@ -278,14 +383,76 @@ export const command: Command = {
       return;
     }
 
+    const step2Label = finalRequireNoRecentPosts
+      ? "Loading profiles + last post time"
+      : "Loading profiles only (skipping feed; no inactive-post rule)";
+    console.log(
+      chalk.gray(`Step 2/4: ${step2Label} for ${follows.length} account(s)...`)
+    );
     const candidates: FollowCandidate[] = [];
-    for (const followed of follows) {
+    let profiled = 0;
+    for (const [index, followed] of follows.entries()) {
       const followUri = followed.viewer?.following;
       if (!followUri) {
+        profiled += 1;
+        if (profiled % 10 === 0 || profiled === follows.length) {
+          console.log(
+            chalk.gray(
+              `  - profiled ${profiled}/${follows.length} (cache ${cacheHits} hits, ${cacheMisses} API)`
+            )
+          );
+        }
         continue;
       }
-      const profile = await agent.getProfile({ actor: followed.did });
-      const lastPostAt = await getLastPostAt(agent, followed.did);
+      const handleLabel = followed.handle || followed.did;
+      const needLastPost = finalRequireNoRecentPosts;
+      const cached = profileCache.entries[followed.did];
+      if (
+        useProfileCache &&
+        canUseCachedProfile(cached, cacheTtlMs, needLastPost)
+      ) {
+        cacheHits += 1;
+        candidates.push({
+          did: followed.did,
+          handle: followed.handle,
+          displayName: followed.displayName,
+          followUri,
+          followersCount: cached!.followersCount,
+          followingCount: cached!.followingCount,
+          postsCount: cached!.postsCount,
+          lastPostAt: needLastPost ? cached!.lastPostAt : null
+        });
+        profiled = index + 1;
+        if (profiled % 10 === 0 || profiled === follows.length) {
+          console.log(
+            chalk.gray(
+              `  - profiled ${profiled}/${follows.length} (cache ${cacheHits} hits, ${cacheMisses} API)`
+            )
+          );
+        }
+        if (throttleMs > 0 && index < follows.length - 1) {
+          await sleep(throttleMs);
+        }
+        continue;
+      }
+
+      cacheMisses += 1;
+      const profile = await withApiRetry(`getProfile @${handleLabel}`, () =>
+        agent.getProfile({ actor: followed.did })
+      );
+      const lastPostAt = needLastPost
+        ? await withApiRetry(`getAuthorFeed @${handleLabel}`, () => getLastPostAt(agent, followed.did))
+        : null;
+      profileCache.entries[followed.did] = buildEntryFromApi({
+        handle: followed.handle,
+        followersCount: profile.data.followersCount ?? 0,
+        followingCount: profile.data.followsCount ?? 0,
+        postsCount: profile.data.postsCount ?? 0,
+        lastPostFetched: needLastPost,
+        lastPostAt: needLastPost ? lastPostAt : null
+      });
+      profileCache.accountDid = accountDid;
+
       candidates.push({
         did: followed.did,
         handle: followed.handle,
@@ -296,6 +463,27 @@ export const command: Command = {
         postsCount: profile.data.postsCount ?? 0,
         lastPostAt
       });
+      profiled = index + 1;
+      if (profiled % 10 === 0 || profiled === follows.length) {
+        console.log(
+          chalk.gray(
+            `  - profiled ${profiled}/${follows.length} (cache ${cacheHits} hits, ${cacheMisses} API)`
+          )
+        );
+      }
+      if (throttleMs > 0 && index < follows.length - 1) {
+        await sleep(throttleMs);
+      }
+    }
+
+    if (useProfileCache) {
+      profileCache.accountDid = accountDid;
+      await saveProfileCache(ctx, profileCache);
+      console.log(
+        chalk.gray(
+          `  Step 2 done: ${cacheHits} cache hit(s), ${cacheMisses} API fetch(es). Stale entries refresh after --cache-ttl-minutes (default 60, stored in state).`
+        )
+      );
     }
 
     const criteriaCtx: CriteriaContext = {
@@ -308,6 +496,7 @@ export const command: Command = {
       requireNoRecentPosts: finalRequireNoRecentPosts
     };
 
+    console.log(chalk.gray("Step 3/4: Applying criteria filters..."));
     const matched = candidates.filter((candidate) => {
       const checks: boolean[] = [];
       if (criteriaCtx.lessFollowersThanMe) {
@@ -338,6 +527,11 @@ export const command: Command = {
       return;
     }
 
+    console.log(
+      chalk.cyan(
+        `Summary: ${matched.length} of ${candidates.length} account(s) in this run matched your rules. Step 4 unfollows only that matched set, not your whole follow list.`
+      )
+    );
     console.log(chalk.cyan(`🎯 Matched ${matched.length} user(s):`));
     for (const user of matched) {
       const label = user.displayName
@@ -356,19 +550,24 @@ export const command: Command = {
       return;
     }
 
+    console.log(chalk.gray(`Step 4/4: Unfollowing ${matched.length} account(s)...`));
     let unfollowed = 0;
     for (const user of matched) {
       const rkey = rkeyFromUri(user.followUri);
       if (!rkey) {
         continue;
       }
-      await agent.com.atproto.repo.deleteRecord({
-        repo: agent.session?.did ?? "",
-        collection: "app.bsky.graph.follow",
-        rkey
-      });
+      await withApiRetry(`deleteFollow @${user.handle}`, () =>
+        agent.com.atproto.repo.deleteRecord({
+          repo: agent.session?.did ?? "",
+          collection: "app.bsky.graph.follow",
+          rkey
+        })
+      );
       unfollowed += 1;
-      console.log(chalk.green(`✅ Unfollowed @${user.handle}`));
+      console.log(
+        chalk.green(`✅ Unfollowed @${user.handle} (${unfollowed}/${matched.length})`)
+      );
     }
 
     console.log(chalk.green(`🎉 Unfollow complete. Removed ${unfollowed} follow(s).`));

@@ -256,6 +256,12 @@ Full account sweep, preset policy, dry-run:
 cct api bluesky unfollow --all --example-policy --dry-run
 ```
 
+Large follow lists can hit rate limits or short network blips. Add a small pause between accounts (milliseconds):
+
+```bash
+cct api bluesky unfollow --all --example-policy --dry-run --throttle-ms 50
+```
+
 Custom rule example (AND):
 
 ```bash
@@ -282,13 +288,22 @@ Unfollow options:
 - `--all` (scan all followed accounts with pagination)
 - `--dry-run`
 - `--interactive`
+- `--throttle-ms <n>` optional pause between accounts (0 = no pause; try 25–100 on long runs)
+- `--cache-ttl-minutes <n>` (default `60`, `0` = same as no cache) reuse recent profile + last-post data from a local cache to skip duplicate API calls on the next run
+- `--no-cache` do not read or write the profile cache
+
+**Matching vs unfollowing:** After step 2, the tool evaluates **every** account in the current scan. Step 3 keeps only accounts that pass your rules. Step 4 unfollows **that** matched set. Example: you might scan 1,900+ follows but only 48 match “fewer followers than me and inactive a year” — the command unfollows those 48, not 1,900. The number `50` in `--limit` is only the default **scan** size when you do **not** use `--all`; it is not a cap on how many accounts you can unfollow in step 4.
+
+`unfollow` prints progress in the terminal (fetch pages, profile scan, filters, unfollow steps). API calls that fail with common network or rate-limit errors are retried a few times with backoff before the command gives up. If a rule does not need “last post” time, the command skips the extra feed request per account to reduce load.
+
+**Profile cache:** Data is stored under the key `bluesky_unfollow_profile_cache` inside `~/.cli-commander/state.json`, scoped to the logged-in account. Entries expire by TTL so “inactive since last post” rules are not stuck on very old data forever.
 
 ## Local Data Files
 
 `cct` writes:
 
 - `~/.cli-commander/secrets.json` (Bluesky session secrets)
-- `~/.cli-commander/state.json` (local command state)
+- `~/.cli-commander/state.json` (local command state, including `bluesky_unfollow_profile_cache` for `unfollow` when caching is on)
 
 No database is used.
 
@@ -301,6 +316,7 @@ No database is used.
   - `brew` is in your `PATH`
 - For full error stack traces:
   - add `--debug` to your command
+- If `unfollow` stops with `fetch failed` after many accounts, run again (progress is not saved). Add `--throttle-ms 50` (or higher) to slow the request rate.
 
 ## Code Map
 
