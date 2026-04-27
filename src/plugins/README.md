@@ -6,7 +6,7 @@ Plugins provide command behavior. Keep them focused and local.
 
 - `sys/update.ts`
   - Interactive updater for common local tooling.
-  - Supports Homebrew formulae/casks, Oh My Zsh, npm, pnpm, Node runtime (nvm/Volta), and optional macOS updates.
+  - Supports Homebrew formulae/casks, Oh My Zsh, npm, pnpm (Corepack-first fallback), Node runtime (nvm/Volta), and optional macOS updates.
   - Use `cct sys update --all` to run all available updaters without prompts.
 - `api/bluesky/login.ts`
   - Prompts for token and stores it via `ctx.auth.set("bluesky", token)`.

@@ -39,9 +39,25 @@ export const command: Command = {
       },
       {
         id: "pnpm_global",
-        label: "pnpm + global pnpm packages (pnpm self-update && pnpm -g update)",
-        isAvailable: async () => hasCommand("pnpm"),
-        run: async () => $`pnpm self-update && pnpm -g update`
+        label:
+          "pnpm + global pnpm packages (Corepack first, fallback to pnpm self-update)",
+        isAvailable: async () =>
+          (await hasCommand("corepack")) || (await hasCommand("pnpm")),
+        run: async () => {
+          if (await hasCommand("corepack")) {
+            await $`corepack enable`;
+            await $`corepack prepare pnpm@latest --activate`;
+            await $`pnpm -g update`;
+            return;
+          }
+
+          if (await hasCommand("pnpm")) {
+            await $`pnpm self-update && pnpm -g update`;
+            return;
+          }
+
+          ctx.log("Skipping pnpm update: corepack/pnpm not installed.");
+        }
       },
       {
         id: "node_runtime",

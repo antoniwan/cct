@@ -42,7 +42,7 @@ npm run dev -- api bluesky login
 npm run dev -- api bluesky post --text "test post"
 ```
 
-`sys update` is interactive by default and lets you choose from available updaters (Homebrew, casks/apps, Oh My Zsh, npm, pnpm, Node via nvm/Volta, and optional macOS updates). Use `--all` to run every available updater non-interactively:
+`sys update` is interactive by default and lets you choose from available updaters (Homebrew, casks/apps, Oh My Zsh, npm, pnpm via Corepack fallback, Node via nvm/Volta, and optional macOS updates). For pnpm updates, `cct` uses Corepack when available, and falls back to `pnpm self-update` when Corepack is missing. Use `--all` to run every available updater non-interactively:
 
 ```bash
 cct sys update --all
