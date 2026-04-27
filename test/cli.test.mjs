@@ -24,7 +24,7 @@ test("cct api bluesky post fails with helpful message when not logged in", () =>
     assert.equal(result.status, 1, "CLI should exit with non-zero status");
     assert.match(
       result.stderr,
-      /Missing Bluesky token\. Run: cct api bluesky login/,
+      /Missing Bluesky session\. Run: cct api bluesky login/,
       "CLI should guide user to login first"
     );
   } finally {

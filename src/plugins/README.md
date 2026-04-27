@@ -9,11 +9,22 @@ Plugins provide command behavior. Keep them focused and local.
   - Supports Homebrew formulae/casks, Oh My Zsh, npm, pnpm (Corepack-first fallback), Node runtime (nvm/Volta), and optional macOS updates.
   - Use `cct sys update --all` to run all available updaters without prompts.
 - `api/bluesky/login.ts`
-  - Prompts for token and stores it via `ctx.auth.set("bluesky", token)`.
+  - Starts a local web login flow, opens your browser, and stores a resumable Bluesky session in `~/.cli-commander/secrets.json`.
 - `api/bluesky/post.ts`
-  - Reads token via `ctx.auth.get("bluesky")`.
+  - Resumes a saved Bluesky session.
   - Accepts `--text` or prompts interactively.
-  - Simulates post output and records post in state.
+  - Publishes a real Bluesky post and records post text in state.
+- `api/bluesky/read.ts`
+  - Reads home timeline or `--actor` feed.
+  - Supports `--limit`.
+- `api/bluesky/extract.ts`
+  - Extracts feed posts to JSON via `--out`.
+  - Supports `--actor` and `--limit`.
+- `api/bluesky/auto-post.ts`
+  - Repeated posting with `--times` and `--intervalSeconds`.
+- `api/bluesky/auto-follow.ts`
+  - Follows followers of `--actor`.
+  - Supports `--limit` and `--dry-run`.
 
 ## Command Contract
 

@@ -2,20 +2,16 @@ import { input } from "@inquirer/prompts";
 import chalk from "chalk";
 
 import type { Command } from "../../../core/types.js";
+import { getFlag, loadAgentFromSession } from "./client.js";
 
 export const command: Command = {
   name: "post",
   description: "Post to Bluesky",
   run: async (ctx, args) => {
-    const token = await ctx.auth.get("bluesky");
-    if (!token) {
-      throw new Error("Missing Bluesky token. Run: cct api bluesky login");
-    }
+    const agent = await loadAgentFromSession(ctx);
 
     const rawArgs = (args?.rawArgs as string[]) ?? [];
-    const textFlagIndex = rawArgs.indexOf("--text");
-    const textFromFlag =
-      textFlagIndex >= 0 ? rawArgs[textFlagIndex + 1] : undefined;
+    const textFromFlag = getFlag(rawArgs, "text");
     const text =
       textFromFlag ??
       (await input({
@@ -27,9 +23,8 @@ export const command: Command = {
       throw new Error("Post text cannot be empty.");
     }
 
-    console.log(chalk.green("Posted to Bluesky (simulated)."));
-    console.log(chalk.gray(`Token prefix: ${token.slice(0, 4)}...`));
-    console.log(text.trim());
+    await agent.post({ text: text.trim() });
+    console.log(chalk.green("Posted to Bluesky."));
     await ctx.state.push("bluesky_posts", {
       text: text.trim(),
       createdAt: new Date().toISOString()

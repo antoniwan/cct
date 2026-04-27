@@ -9,7 +9,15 @@ const commandLoaders: Record<CommandKey, () => Promise<Command>> = {
   "api:bluesky:login": async () =>
     (await import("../plugins/api/bluesky/login.js")).command,
   "api:bluesky:post": async () =>
-    (await import("../plugins/api/bluesky/post.js")).command
+    (await import("../plugins/api/bluesky/post.js")).command,
+  "api:bluesky:read": async () =>
+    (await import("../plugins/api/bluesky/read.js")).command,
+  "api:bluesky:extract": async () =>
+    (await import("../plugins/api/bluesky/extract.js")).command,
+  "api:bluesky:auto-post": async () =>
+    (await import("../plugins/api/bluesky/auto-post.js")).command,
+  "api:bluesky:auto-follow": async () =>
+    (await import("../plugins/api/bluesky/auto-follow.js")).command
 };
 
 export const commandTree = {
@@ -17,7 +25,7 @@ export const commandTree = {
     root: ["update"]
   },
   api: {
-    bluesky: ["login", "post"]
+    bluesky: ["login", "post", "read", "extract", "auto-post", "auto-follow"]
   }
 } as const;
 

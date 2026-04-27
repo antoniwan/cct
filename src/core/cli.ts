@@ -98,7 +98,7 @@ export async function runCli(argv: string[]): Promise<void> {
     const path = args.length > 0 ? parsePath(args) : await interactivePath();
     if (!path) {
       throw new Error(
-        "Invalid command. Try: cct sys update, cct api bluesky login, or cct api bluesky post"
+        "Invalid command. Try: cct sys update, cct api bluesky login, cct api bluesky post, cct api bluesky read, or cct api bluesky extract"
       );
     }
 

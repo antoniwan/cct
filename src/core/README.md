@@ -7,7 +7,7 @@ This folder contains the command runtime, router, and local persistence services
 - `cli.ts`: CLI entry logic, argument parsing, interactive fallback, top-level error handling.
 - `router.ts`: namespace/group/command routing and dynamic imports for plugins.
 - `types.ts`: shared command/context interfaces.
-- `auth.ts`: token read/write service backed by `~/.cli-commander/secrets.json`.
+- `auth.ts`: secret/session read/write service backed by `~/.cli-commander/secrets.json`.
 - `state.ts`: generic JSON state service backed by `~/.cli-commander/state.json`.
 
 ## How To Extend Safely
@@ -27,6 +27,6 @@ This folder contains the command runtime, router, and local persistence services
 
 ## Persistence Rules
 
-- Keep auth/state local only.
+- Keep auth/state local only (`~/.cli-commander/secrets.json`, `~/.cli-commander/state.json`).
 - Use `fs/promises` and JSON files.
 - Avoid schema migrations unless absolutely required; if introduced, document migration steps in root `README.md`.
