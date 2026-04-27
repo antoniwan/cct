@@ -1,3 +1,4 @@
+import { checkbox, confirm, input, select } from "@inquirer/prompts";
 import chalk from "chalk";
 
 import type { Command } from "../../../core/types.js";
@@ -68,24 +69,174 @@ export const command: Command = {
   run: async (ctx, args) => {
     const agent = await loadAgentFromSession(ctx);
     const rawArgs = (args?.rawArgs as string[]) ?? [];
+    const interactive = hasFlag(rawArgs, "interactive");
     const me = agent.session?.did ?? agent.session?.handle;
     if (!me) {
       throw new Error("Unable to identify the logged-in account.");
     }
 
-    const limit = getNumberFlag(rawArgs, "limit", 50);
-    const dryRun = hasFlag(rawArgs, "dry-run");
-    const inactiveDays = getNumberFlag(rawArgs, "inactive-days", 365);
-    const matchMode = (getFlag(rawArgs, "match") ?? "all").toLowerCase();
-    const lessFollowersThanMe = hasFlag(rawArgs, "less-followers-than-me");
-    const requireNoRecentPosts = hasFlag(rawArgs, "no-posts-since");
-    const examplePolicy = hasFlag(rawArgs, "example-policy");
-    const maxFollowers = parseOptionalPositiveNumber(rawArgs, "max-followers");
-    const maxFollowing = parseOptionalPositiveNumber(rawArgs, "max-following");
-    const maxPosts = parseOptionalPositiveNumber(rawArgs, "max-posts");
+    let limit = getNumberFlag(rawArgs, "limit", 50);
+    let allMode = hasFlag(rawArgs, "all");
+    let dryRun = hasFlag(rawArgs, "dry-run");
+    let inactiveDays = getNumberFlag(rawArgs, "inactive-days", 365);
+    let matchMode = (getFlag(rawArgs, "match") ?? "all").toLowerCase();
+    let lessFollowersThanMe = hasFlag(rawArgs, "less-followers-than-me");
+    let requireNoRecentPosts = hasFlag(rawArgs, "no-posts-since");
+    let examplePolicy = hasFlag(rawArgs, "example-policy");
+    let maxFollowers = parseOptionalPositiveNumber(rawArgs, "max-followers");
+    let maxFollowing = parseOptionalPositiveNumber(rawArgs, "max-following");
+    let maxPosts = parseOptionalPositiveNumber(rawArgs, "max-posts");
 
     if (matchMode !== "all" && matchMode !== "any") {
       throw new Error("--match must be either 'all' or 'any'.");
+    }
+
+    const hasAnyCriteria =
+      examplePolicy ||
+      lessFollowersThanMe ||
+      requireNoRecentPosts ||
+      maxFollowers !== null ||
+      maxFollowing !== null ||
+      maxPosts !== null;
+
+    if (!hasAnyCriteria || interactive) {
+      console.log(chalk.cyan("🧭 Interactive unfollow setup"));
+      examplePolicy = await confirm({
+        message:
+          "Use preset policy? (fewer followers than you AND no posts in last year)",
+        default: examplePolicy
+      });
+
+      if (!examplePolicy) {
+        const selected = await checkbox({
+          message: "Select unfollow criteria",
+          choices: [
+            {
+              name: "Account has fewer followers than me",
+              value: "less-followers-than-me",
+              checked: lessFollowersThanMe
+            },
+            {
+              name: "No posts in last N days",
+              value: "no-posts-since",
+              checked: requireNoRecentPosts
+            },
+            {
+              name: "Followers count <= max value",
+              value: "max-followers",
+              checked: maxFollowers !== null
+            },
+            {
+              name: "Following count <= max value",
+              value: "max-following",
+              checked: maxFollowing !== null
+            },
+            {
+              name: "Posts count <= max value",
+              value: "max-posts",
+              checked: maxPosts !== null
+            }
+          ]
+        });
+
+        lessFollowersThanMe = selected.includes("less-followers-than-me");
+        requireNoRecentPosts = selected.includes("no-posts-since");
+
+        if (selected.includes("no-posts-since")) {
+          const rawDays = await input({
+            message: "Inactive days threshold",
+            default: String(inactiveDays),
+            required: true
+          });
+          const parsedDays = Number(rawDays);
+          if (!Number.isFinite(parsedDays) || parsedDays <= 0) {
+            throw new Error("Inactive days must be a positive number.");
+          }
+          inactiveDays = parsedDays;
+        }
+
+        if (selected.includes("max-followers")) {
+          const raw = await input({
+            message: "Max followers",
+            default: maxFollowers !== null ? String(maxFollowers) : "100",
+            required: true
+          });
+          const parsed = Number(raw);
+          if (!Number.isFinite(parsed) || parsed < 0) {
+            throw new Error("Max followers must be a non-negative number.");
+          }
+          maxFollowers = parsed;
+        } else {
+          maxFollowers = null;
+        }
+
+        if (selected.includes("max-following")) {
+          const raw = await input({
+            message: "Max following",
+            default: maxFollowing !== null ? String(maxFollowing) : "100",
+            required: true
+          });
+          const parsed = Number(raw);
+          if (!Number.isFinite(parsed) || parsed < 0) {
+            throw new Error("Max following must be a non-negative number.");
+          }
+          maxFollowing = parsed;
+        } else {
+          maxFollowing = null;
+        }
+
+        if (selected.includes("max-posts")) {
+          const raw = await input({
+            message: "Max posts",
+            default: maxPosts !== null ? String(maxPosts) : "50",
+            required: true
+          });
+          const parsed = Number(raw);
+          if (!Number.isFinite(parsed) || parsed < 0) {
+            throw new Error("Max posts must be a non-negative number.");
+          }
+          maxPosts = parsed;
+        } else {
+          maxPosts = null;
+        }
+
+        if (selected.length > 1) {
+          matchMode = await select({
+            message: "How should multiple criteria be combined?",
+            choices: [
+              { name: "ALL (AND) - user must match every selected rule", value: "all" },
+              { name: "ANY (OR) - user can match any selected rule", value: "any" }
+            ],
+            default: matchMode as "all" | "any"
+          });
+        } else {
+          matchMode = "all";
+        }
+      } else {
+        matchMode = "all";
+        inactiveDays = 365;
+      }
+
+      const rawLimit = await input({
+        message: "How many followed accounts should be evaluated? (ignored in all mode)",
+        default: String(limit),
+        required: true
+      });
+      const parsedLimit = Number(rawLimit);
+      if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
+        throw new Error("Limit must be a positive number.");
+      }
+      limit = parsedLimit;
+
+      allMode = await confirm({
+        message: "Scan all followed accounts (full cleanup mode)?",
+        default: allMode
+      });
+
+      dryRun = await confirm({
+        message: "Run in dry-run mode (recommended)?",
+        default: true
+      });
     }
 
     // Enables the exact policy requested: lower follower count than me AND no posts in the last year.
@@ -99,12 +250,29 @@ export const command: Command = {
     console.log(chalk.cyan("🧹 Evaluating follows for unfollow rules..."));
     console.log(
       chalk.gray(
-        `Mode=${matchMode.toUpperCase()} | limit=${limit} | dryRun=${dryRun ? "yes" : "no"}`
+        `Mode=${matchMode.toUpperCase()} | scope=${allMode ? "ALL_FOLLOWS" : `LIMIT_${limit}`} | dryRun=${dryRun ? "yes" : "no"}`
       )
     );
 
-    const followsResponse = await agent.getFollows({ actor: me, limit });
-    const follows = followsResponse.data.follows;
+    const follows: Array<
+      NonNullable<(Awaited<ReturnType<typeof agent.getFollows>>)["data"]["follows"]>[number]
+    > = [];
+    let cursor: string | undefined;
+    do {
+      const pageLimit = allMode ? 100 : limit - follows.length;
+      if (!allMode && pageLimit <= 0) {
+        break;
+      }
+
+      const response = await agent.getFollows({
+        actor: me,
+        limit: pageLimit,
+        cursor
+      });
+      follows.push(...response.data.follows);
+      cursor = response.data.cursor;
+    } while (allMode ? Boolean(cursor) : follows.length < limit);
+
     if (follows.length === 0) {
       console.log(chalk.yellow("⚠️ You are not following anyone in the selected scope."));
       return;

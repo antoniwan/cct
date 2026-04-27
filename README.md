@@ -1,152 +1,315 @@
 # CLI Commander Tool (`cct`)
 
-Minimal, production-quality local CLI for macOS.
+Local CLI for system tasks and Bluesky actions.
 
-## What It Does
-
-`cct` provides a single command entrypoint with plugin-based commands:
-
-- `cct sys update`
-- `cct api bluesky login`
-- `cct api bluesky post --text "hello world"`
-- `cct api bluesky read --limit 10`
-- `cct api bluesky extract --actor bsky.app --limit 20 --out ./posts.json`
-- `cct api bluesky followers --actor bsky.app --limit 20`
-- `cct api bluesky unfollow --example-policy --dry-run`
-- `cct api bluesky auto-post --text "scheduled hello" --times 3 --intervalSeconds 60`
-- `cct api bluesky auto-follow --actor bsky.app --limit 10 --dry-run`
-
-It runs entirely on your machine and stores local state in `~/.cli-commander/`.
+It runs on your machine and stores local files in `~/.cli-commander/`.
 
 ## Requirements
 
 - macOS
-- Node.js 18+
-- Homebrew (for `sys update`)
+- Node.js `>=18`
+- Homebrew (only needed for `cct sys update`)
 
-## Install And Run
+## Installation
+
+### Project install (for development in this repo)
 
 ```bash
 npm install
 npm run build
-npm run link
 ```
 
-After linking:
+### System-wide command install (`cct`)
 
-```bash
-cct sys update
-```
-
-## Development
-
-### Run in dev mode
-
-```bash
-npm run dev -- sys update
-npm run dev -- api bluesky login
-npm run dev -- api bluesky post --text "test post"
-npm run dev -- api bluesky read --limit 5
-npm run dev -- api bluesky extract --actor bsky.app --limit 5 --out ./posts.json
-npm run dev -- api bluesky followers --actor bsky.app --limit 10
-npm run dev -- api bluesky unfollow --example-policy --dry-run
-npm run dev -- api bluesky auto-post --text "hello" --times 2 --intervalSeconds 30
-npm run dev -- api bluesky auto-follow --actor bsky.app --limit 5 --dry-run
-```
-
-`sys update` is interactive by default and lets you choose from available updaters (Homebrew, casks/apps, Oh My Zsh, npm, pnpm via Corepack fallback, Node via nvm/Volta, and optional macOS updates). For pnpm updates, `cct` uses Corepack when available, and falls back to `pnpm self-update` when Corepack is missing. Use `--all` to run every available updater non-interactively:
-
-```bash
-cct sys update --all
-```
-
-### Build
-
-```bash
-npm run build
-```
-
-### Test
-
-```bash
-npm test
-```
-
-### Use the linked CLI
+This repo already has a link script:
 
 ```bash
 npm run link
-cct api bluesky post --text "from linked binary"
 ```
 
-## Usage
+After this, `cct` is available in your shell.
 
-### Non-interactive mode
+Alternative global install from this local folder:
 
 ```bash
-cct <namespace> <command> [options]
+npm install -g .
 ```
 
-Supported:
-
-- `cct sys update`
-- `cct api bluesky login`
-- `cct api bluesky post --text "hello world"`
-- `cct api bluesky read --limit 10`
-- `cct api bluesky read --actor bsky.app --limit 10`
-- `cct api bluesky extract --limit 50 --out ./bluesky-posts.json`
-- `cct api bluesky followers --actor bsky.app --limit 20`
-- `cct api bluesky unfollow --example-policy --dry-run`
-- `cct api bluesky auto-post --text "hello" --times 3 --intervalSeconds 60`
-- `cct api bluesky auto-follow --actor bsky.app --limit 20 --dry-run`
-
-Unfollow criteria options:
-
-- `--example-policy`: applies this preset rule (AND): target has fewer followers than you, and target has not posted in the last year.
-- `--less-followers-than-me`: target followers `<` your followers.
-- `--no-posts-since --inactive-days <days>`: target inactive for at least N days.
-- `--max-followers <n>`: target followers less than or equal to N.
-- `--max-following <n>`: target following count less than or equal to N.
-- `--max-posts <n>`: target post count less than or equal to N.
-- `--match all|any`: combine criteria with AND (`all`) or OR (`any`). Default is `all`.
-- `--dry-run`: preview matched users without unfollowing.
-- `--limit <n>`: number of followed users to evaluate (default 50).
-
-### Interactive mode
-
-Run without args:
+## First Run
 
 ```bash
 cct
 ```
 
-This opens the home screen title and nested menus (`sys`/`api` then plugin commands).
+This opens interactive menus.
 
-## Local Data
+Quick Bluesky setup:
 
-`cct` creates `~/.cli-commander/` on first write:
+```bash
+cct api bluesky login
+```
 
-- `~/.cli-commander/secrets.json` for auth tokens
-- `~/.cli-commander/state.json` for command state
+Then try:
+
+```bash
+cct api bluesky followers --limit 10
+```
+
+## Development Commands
+
+```bash
+# run source directly
+npm run dev -- api bluesky followers --limit 5
+
+# build TypeScript output
+npm run build
+
+# run tests
+npm test
+```
+
+## CLI Usage
+
+### General shape
+
+```bash
+cct <namespace> <groupOrCommand> [command] [options]
+```
+
+Examples:
+
+- `cct sys update`
+- `cct api bluesky login`
+- `cct api bluesky post --text "hello world"`
+
+### Interactive mode
+
+```bash
+cct
+```
+
+### Debug mode
+
+`--debug` prints stack traces on errors:
+
+```bash
+cct api bluesky post --debug
+```
+
+## Command Reference
+
+## `sys` namespace
+
+### `cct sys update`
+
+Interactive updater for local tooling.
+
+```bash
+cct sys update
+```
+
+Run all available updaters without prompts:
+
+```bash
+cct sys update --all
+```
+
+## `api bluesky` namespace
+
+### 1) Login
+
+```bash
+cct api bluesky login
+```
+
+What happens:
+
+- Starts a local page on `127.0.0.1`
+- Opens browser for credentials
+- Saves Bluesky session in `~/.cli-commander/secrets.json`
+
+### 2) Post
+
+Post with flag:
+
+```bash
+cct api bluesky post --text "hello from cct"
+```
+
+Or run without `--text` and answer prompt:
+
+```bash
+cct api bluesky post
+```
+
+### 3) Read timeline or author feed
+
+Home timeline:
+
+```bash
+cct api bluesky read --limit 10
+```
+
+Specific actor:
+
+```bash
+cct api bluesky read --actor bsky.app --limit 10
+```
+
+Options:
+
+- `--actor <handleOrDid>`
+- `--limit <number>`
+
+### 4) Extract posts to JSON
+
+```bash
+cct api bluesky extract --limit 50 --out ./bluesky-posts.json
+```
+
+Author feed extract:
+
+```bash
+cct api bluesky extract --actor bsky.app --limit 20 --out ./posts.json
+```
+
+Options:
+
+- `--actor <handleOrDid>`
+- `--limit <number>`
+- `--out <filePath>`
+
+### 5) List latest followers
+
+Use logged-in account:
+
+```bash
+cct api bluesky followers --limit 20
+```
+
+Use explicit actor:
+
+```bash
+cct api bluesky followers --actor bsky.app --limit 20
+```
+
+Options:
+
+- `--actor <handleOrDid>` (optional)
+- `--limit <number>`
+
+### 6) Auto-post
+
+```bash
+cct api bluesky auto-post --text "status update" --times 3 --intervalSeconds 60
+```
+
+Options:
+
+- `--text <string>` (optional, prompts if missing)
+- `--times <number>`
+- `--intervalSeconds <number>`
+
+### 7) Auto-follow
+
+Preview only:
+
+```bash
+cct api bluesky auto-follow --actor bsky.app --limit 20 --dry-run
+```
+
+Execute:
+
+```bash
+cct api bluesky auto-follow --actor bsky.app --limit 20
+```
+
+Options:
+
+- `--actor <handleOrDid>` (required)
+- `--limit <number>`
+- `--dry-run`
+
+### 8) Unfollow cleanup
+
+Interactive wizard (recommended first run):
+
+```bash
+cct api bluesky unfollow
+```
+
+Force interactive wizard even with flags:
+
+```bash
+cct api bluesky unfollow --interactive
+```
+
+Preset rule (your requested policy), dry-run:
+
+```bash
+cct api bluesky unfollow --example-policy --dry-run
+```
+
+Full account sweep, preset policy, dry-run:
+
+```bash
+cct api bluesky unfollow --all --example-policy --dry-run
+```
+
+Custom rule example (AND):
+
+```bash
+cct api bluesky unfollow \
+  --less-followers-than-me \
+  --no-posts-since --inactive-days 365 \
+  --max-posts 20 \
+  --match all \
+  --dry-run
+```
+
+Unfollow options:
+
+- `--example-policy`  
+  Fewer followers than you AND no posts in last year.
+- `--less-followers-than-me`
+- `--no-posts-since`
+- `--inactive-days <days>`
+- `--max-followers <n>`
+- `--max-following <n>`
+- `--max-posts <n>`
+- `--match all|any`
+- `--limit <n>` (used when `--all` is not set)
+- `--all` (scan all followed accounts with pagination)
+- `--dry-run`
+- `--interactive`
+
+## Local Data Files
+
+`cct` writes:
+
+- `~/.cli-commander/secrets.json` (Bluesky session secrets)
+- `~/.cli-commander/state.json` (local command state)
 
 No database is used.
 
 ## Troubleshooting
 
-- Add `--debug` to show stack traces:
-  - `cct api bluesky post --debug`
-- If `sys update` fails, verify `brew` is installed and on `PATH`.
-- `cct api bluesky login` starts a local web page and listens on `127.0.0.1` for your form submission.
-- If a Bluesky command says session is missing/expired, run `cct api bluesky login` again.
+- If a Bluesky command says session is missing or expired, run:
+  - `cct api bluesky login`
+- If `sys update` fails, verify:
+  - `brew` is installed
+  - `brew` is in your `PATH`
+- For full error stack traces:
+  - add `--debug` to your command
 
-## Maintenance Map
+## Code Map
 
 - CLI entry and argument handling: `src/core/cli.ts`
 - Dynamic command routing: `src/core/router.ts`
 - Auth and state persistence: `src/core/auth.ts`, `src/core/state.ts`
 - Plugin commands: `src/plugins/**`
 
-See module docs for contributor details:
+More contributor docs:
 
 - `src/core/README.md`
 - `src/plugins/README.md`

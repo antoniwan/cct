@@ -2,6 +2,11 @@
 
 Plugins provide command behavior. Keep them focused and local.
 
+## Plugin Paths In This Repo
+
+- `src/plugins/sys/<command>.ts` for sys root commands
+- `src/plugins/api/<service>/<command>.ts` for API commands
+
 ## Current Plugins
 
 - `sys/update.ts`
@@ -26,13 +31,29 @@ Plugins provide command behavior. Keep them focused and local.
   - Supports `--limit`.
 - `api/bluesky/unfollow.ts`
   - Unfollows users you currently follow based on criteria rules.
-  - Supports `--match all|any`, `--dry-run`, and multiple filters.
+  - Opens a guided interactive criteria setup when no rule flags are passed.
+  - Supports `--interactive` to force guided setup.
+  - Supports `--all` for full paginated scan, plus `--match all|any`, `--dry-run`, and multiple filters.
   - Includes `--example-policy` (fewer followers than you AND no posts in last year).
 - `api/bluesky/auto-post.ts`
   - Repeated posting with `--times` and `--intervalSeconds`.
 - `api/bluesky/auto-follow.ts`
   - Follows followers of `--actor`.
   - Supports `--limit` and `--dry-run`.
+
+## Quick Command Examples
+
+```bash
+cct sys update --all
+cct api bluesky login
+cct api bluesky post --text "hello"
+cct api bluesky read --limit 10
+cct api bluesky extract --out ./posts.json --limit 20
+cct api bluesky followers --limit 10
+cct api bluesky unfollow --example-policy --dry-run
+cct api bluesky auto-post --text "ping" --times 2 --intervalSeconds 30
+cct api bluesky auto-follow --actor bsky.app --limit 10 --dry-run
+```
 
 ## Command Contract
 
@@ -64,3 +85,16 @@ export const command: Command = {
 - Keep command logic close to command file.
 - Prefer simple data flow through `ctx.auth`, `ctx.state`, and local helpers.
 - Provide clear user-facing messages with `chalk`.
+
+## Plugin Author Checklist
+
+Before finishing plugin changes:
+
+1. Confirm command is in `router.ts` loaders and `commandTree`.
+2. Run command directly with realistic args.
+3. Run command from interactive menu (`cct`).
+4. Run `npm run build`.
+5. Update docs in:
+   - `README.md`
+   - `src/core/README.md` (if core behavior changed)
+   - `src/plugins/README.md`

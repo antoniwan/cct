@@ -10,6 +10,16 @@ This folder contains the command runtime, router, and local persistence services
 - `auth.ts`: secret/session read/write service backed by `~/.cli-commander/secrets.json`.
 - `state.ts`: generic JSON state service backed by `~/.cli-commander/state.json`.
 
+## Runtime Flow (Simple View)
+
+1. `src/index.ts` calls `runCli(process.argv)`.
+2. `cli.ts` parses args and creates `ctx` (`auth`, `state`, `log`, `debug`).
+3. `cli.ts` resolves command path (from args or interactive menu).
+4. `router.ts` dynamically imports the plugin command.
+5. Plugin runs and may read/write:
+   - `~/.cli-commander/secrets.json`
+   - `~/.cli-commander/state.json`
+
 ## How To Extend Safely
 
 1. Add plugin command file under `src/plugins/...`.
@@ -25,8 +35,27 @@ This folder contains the command runtime, router, and local persistence services
 - Keep stack traces hidden by default.
 - Print stack traces only when `--debug` is passed.
 
+Example:
+
+```bash
+cct api bluesky post --debug
+```
+
 ## Persistence Rules
 
 - Keep auth/state local only (`~/.cli-commander/secrets.json`, `~/.cli-commander/state.json`).
 - Use `fs/promises` and JSON files.
 - Avoid schema migrations unless absolutely required; if introduced, document migration steps in root `README.md`.
+
+## Useful Maintenance Commands
+
+```bash
+# build
+npm run build
+
+# run tests
+npm test
+
+# run from source
+npm run dev -- api bluesky followers --limit 5
+```

@@ -22,7 +22,7 @@ const BLUESKY_COMMAND_LABELS: Record<string, string> = {
   read: "📖 read - Read timeline or author feed",
   extract: "📦 extract - Export posts to JSON",
   followers: "👥 followers - List latest followers",
-  unfollow: "🧹 unfollow - Remove follows via rule filters",
+  unfollow: "🧹 unfollow - Guided criteria-based unfollow",
   "auto-post": "🤖 auto-post - Publish repeated posts on interval",
   "auto-follow": "🤝 auto-follow - Follow target followers (automation)"
 };
