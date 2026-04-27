@@ -12,6 +12,7 @@ Minimal, production-quality local CLI for macOS.
 - `cct api bluesky read --limit 10`
 - `cct api bluesky extract --actor bsky.app --limit 20 --out ./posts.json`
 - `cct api bluesky followers --actor bsky.app --limit 20`
+- `cct api bluesky unfollow --example-policy --dry-run`
 - `cct api bluesky auto-post --text "scheduled hello" --times 3 --intervalSeconds 60`
 - `cct api bluesky auto-follow --actor bsky.app --limit 10 --dry-run`
 
@@ -48,6 +49,7 @@ npm run dev -- api bluesky post --text "test post"
 npm run dev -- api bluesky read --limit 5
 npm run dev -- api bluesky extract --actor bsky.app --limit 5 --out ./posts.json
 npm run dev -- api bluesky followers --actor bsky.app --limit 10
+npm run dev -- api bluesky unfollow --example-policy --dry-run
 npm run dev -- api bluesky auto-post --text "hello" --times 2 --intervalSeconds 30
 npm run dev -- api bluesky auto-follow --actor bsky.app --limit 5 --dry-run
 ```
@@ -94,8 +96,21 @@ Supported:
 - `cct api bluesky read --actor bsky.app --limit 10`
 - `cct api bluesky extract --limit 50 --out ./bluesky-posts.json`
 - `cct api bluesky followers --actor bsky.app --limit 20`
+- `cct api bluesky unfollow --example-policy --dry-run`
 - `cct api bluesky auto-post --text "hello" --times 3 --intervalSeconds 60`
 - `cct api bluesky auto-follow --actor bsky.app --limit 20 --dry-run`
+
+Unfollow criteria options:
+
+- `--example-policy`: applies this preset rule (AND): target has fewer followers than you, and target has not posted in the last year.
+- `--less-followers-than-me`: target followers `<` your followers.
+- `--no-posts-since --inactive-days <days>`: target inactive for at least N days.
+- `--max-followers <n>`: target followers less than or equal to N.
+- `--max-following <n>`: target following count less than or equal to N.
+- `--max-posts <n>`: target post count less than or equal to N.
+- `--match all|any`: combine criteria with AND (`all`) or OR (`any`). Default is `all`.
+- `--dry-run`: preview matched users without unfollowing.
+- `--limit <n>`: number of followed users to evaluate (default 50).
 
 ### Interactive mode
 
@@ -105,7 +120,7 @@ Run without args:
 cct
 ```
 
-This opens nested menus (`sys`/`api` then plugin commands).
+This opens the home screen title and nested menus (`sys`/`api` then plugin commands).
 
 ## Local Data
 

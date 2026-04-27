@@ -24,6 +24,10 @@ Plugins provide command behavior. Keep them focused and local.
   - Lists latest followers for `--actor`.
   - Defaults to logged-in handle when `--actor` is omitted.
   - Supports `--limit`.
+- `api/bluesky/unfollow.ts`
+  - Unfollows users you currently follow based on criteria rules.
+  - Supports `--match all|any`, `--dry-run`, and multiple filters.
+  - Includes `--example-policy` (fewer followers than you AND no posts in last year).
 - `api/bluesky/auto-post.ts`
   - Repeated posting with `--times` and `--intervalSeconds`.
 - `api/bluesky/auto-follow.ts`

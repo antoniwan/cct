@@ -22,6 +22,7 @@ const BLUESKY_COMMAND_LABELS: Record<string, string> = {
   read: "📖 read - Read timeline or author feed",
   extract: "📦 extract - Export posts to JSON",
   followers: "👥 followers - List latest followers",
+  unfollow: "🧹 unfollow - Remove follows via rule filters",
   "auto-post": "🤖 auto-post - Publish repeated posts on interval",
   "auto-follow": "🤝 auto-follow - Follow target followers (automation)"
 };
@@ -61,6 +62,12 @@ function parsePath(input: string[]): CommandPath | null {
 }
 
 async function interactivePath(): Promise<CommandPath> {
+  console.log(
+    chalk.cyanBright.bold("🚀 CLI COMMANDER TOOL") +
+      chalk.gray("  —  local automation with style")
+  );
+  console.log(chalk.gray("Choose your adventure below.\n"));
+
   const namespace = await select({
     message: "✨ Choose a workspace",
     choices: [
@@ -123,7 +130,7 @@ export async function runCli(argv: string[]): Promise<void> {
     const path = args.length > 0 ? parsePath(args) : await interactivePath();
     if (!path) {
       throw new Error(
-        "Invalid command. Try one of: cct sys update, cct api bluesky login, cct api bluesky post, cct api bluesky read, cct api bluesky extract, cct api bluesky followers"
+        "Invalid command. Try one of: cct sys update, cct api bluesky login, cct api bluesky post, cct api bluesky read, cct api bluesky extract, cct api bluesky followers, cct api bluesky unfollow"
       );
     }
 
